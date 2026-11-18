@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<!-- RECUPERAR SENHA (código de 6 números) E RECUPERAR EMAIL (telefone + CEP) - tela pública -->
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Turbo Garage | Recuperar acesso</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="pagina-login">
+    <header class="topo">
+        <a class="marca" href="/index.html">
+            <div class="marca-logo">TG</div>
+            <div>
+                <div class="marca-nome">TURBO <span>GARAGE</span></div>
+                <div class="marca-slogan">Gestão de clientes para oficina mecânica</div>
+            </div>
+        </a>
+        <div class="aluno">Aluno: <strong>Guilherme Felberque/Danilo Dorella</strong></div>
+    </header>
+
+    <main class="login-area">
+        <div class="cartao login-cartao recuperar-cartao">
+            <h1>Recuperar acesso</h1>
+
+            <!-- Abas -->
+            <div class="abas" role="tablist">
+                <button type="button" class="aba ativa" id="abaSenha" role="tab" aria-selected="true">Esqueci a senha</button>
+                <button type="button" class="aba" id="abaEmail" role="tab" aria-selected="false">Esqueci o email</button>
+            </div>
+
+            <!-- ===== ESQUECI A SENHA ===== -->
+            <section id="painelSenha">
+                <!-- Passo 1: pedir o código -->
+                <form id="formCodigo" novalidate>
+                    <p class="sub">Digite o email da sua conta. Vamos enviar um código de 6 números para criar uma senha nova.</p>
+                    <div class="campo">
+                        <label for="emailRec">Email</label>
+                        <input type="email" id="emailRec" placeholder="seuemail@gmail.com" autocomplete="email" required>
+                    </div>
+                    <button type="submit" class="btn" id="btnCodigo">Enviar código</button>
+                </form>
+
+                <!-- Passo 2: código + senha nova -->
+                <form id="formNovaSenha" novalidate hidden>
+                    <p class="sub">Digite o código que você recebeu em <strong id="emailMostrado"></strong> e a sua senha nova.</p>
+                    <div class="campo">
+                        <label for="codigo">Código de 6 números</label>
+                        <input id="codigo" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" class="codigo" required>
+                    </div>
+                    <div class="campo">
+                        <label for="novaSenha">Nova senha</label>
+                        <input type="password" id="novaSenha" minlength="6" maxlength="72" autocomplete="new-password" required>
+                        <div class="dica">Mínimo de 6 caracteres</div>
+                    </div>
+                    <div class="campo">
+                        <label for="confirmarSenha">Confirmar nova senha</label>
+                        <input type="password" id="confirmarSenha" maxlength="72" autocomplete="new-password" required>
+                    </div>
+                    <button type="submit" class="btn">Salvar senha nova</button>
+                    <p class="link-conta"><a href="#" id="reenviar">Não recebi: enviar outro código</a></p>
+                </form>
+            </section>
+
+            <!-- ===== ESQUECI O EMAIL ===== -->
+            <section id="painelEmail" hidden>
+                <form id="formEmail" novalidate>
+                    <p class="sub">Digite o telefone e o CEP que você usou no cadastro.</p>
+                    <div class="campo">
+                        <label for="telefone">Telefone</label>
+                        <input id="telefone" inputmode="numeric" placeholder="(00) 90000-0000" maxlength="15" required>
+                    </div>
+                    <div class="campo">
+                        <label for="cep">CEP</label>
+                        <input id="cep" inputmode="numeric" placeholder="00000-000" maxlength="9" required>
+                    </div>
+                    <button type="submit" class="btn">Buscar meu email</button>
+                </form>
+            </section>
+
+            <div id="mensagem" class="alerta" role="alert"></div>
+
+            <p class="link-conta"><a href="/index.html">← Voltar para o login</a></p>
+        </div>
+    </main>
+
+    <script>
+        const $ = id => document.getElementById(id);
+        let emailPedido = "";
+
+        function aviso(texto, tipo) {
+            $("mensagem").textContent = texto;
+            $("mensagem").className = "alerta " + (tipo || "");
+        }
+
+        async function enviar(url, dados) {
+            const r = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(dados)
+            });
+            const resp = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(resp.mensagem || "Erro " + r.status);
+            return resp;
+        }
+
+        // ---------- Abas ----------
+        function trocarAba(senha) {
+            $("painelSenha").hidden = !senha;
+            $("painelEmail").hidden = senha;
+            $("abaSenha").classList.toggle("ativa", senha);
+            $("abaEmail").classList.toggle("ativa", !senha);
+            $("abaSenha").setAttribute("aria-selected", senha);
+            $("abaEmail").setAttribute("aria-selected", !senha);
+            aviso("");
+        }
+        $("abaSenha").onclick = () => trocarAba(true);
+        $("abaEmail").onclick = () => trocarAba(false);
+
+        // ---------- Senha, passo 1: POST /api/recuperar/senha/codigo ----------
+        async function pedirCodigo() {
+            const email = $("emailRec").value.trim();
+            if (!email || !$("emailRec").checkValidity()) { aviso("Digite um email válido.", "erro"); $("emailRec").focus(); return; }
+            $("btnCodigo").disabled = true;
+            try {
+                const resp = await enviar("/api/recuperar/senha/codigo", { email });
+                emailPedido = email;
+                $("emailMostrado").textContent = email;
+                $("formCodigo").hidden = true;
+                $("formNovaSenha").hidden = false;
+                aviso(resp.mensagem, "sucesso");
+                $("codigo").focus();
+            } catch (err) {
+                aviso(err.message, "erro");
+            } finally {
+                $("btnCodigo").disabled = false;
+            }
+        }
+        $("formCodigo").addEventListener("submit", e => { e.preventDefault(); pedirCodigo(); });
+        $("reenviar").addEventListener("click", e => {
+            e.preventDefault();
+            $("formNovaSenha").hidden = true;
+            $("formCodigo").hidden = false;
+            aviso("");
+            $("emailRec").focus();
+        });
+
+        // Código: só números
+        $("codigo").addEventListener("input", e => e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6));
+
+        // ---------- Senha, passo 2: POST /api/recuperar/senha/nova ----------
+        $("formNovaSenha").addEventListener("submit", async e => {
+            e.preventDefault();
+            const codigo = $("codigo").value;
+            const novaSenha = $("novaSenha").value;
+            if (!/^\d{6}$/.test(codigo)) { aviso("O código tem 6 números.", "erro"); $("codigo").focus(); return; }
+            if (novaSenha.length < 6) { aviso("A senha precisa ter pelo menos 6 caracteres.", "erro"); $("novaSenha").focus(); return; }
+            if (novaSenha !== $("confirmarSenha").value) { aviso("As senhas não são iguais.", "erro"); $("confirmarSenha").focus(); return; }
+            try {
+                const resp = await enviar("/api/recuperar/senha/nova", { email: emailPedido, codigo, novaSenha });
+                $("formNovaSenha").hidden = true;
+                aviso(resp.mensagem, "sucesso");   // "Senha alterada com sucesso!..."
+                setTimeout(() => window.location.href = "/index.html", 2500);
+            } catch (err) {
+                aviso(err.message, "erro");          // ex.: "Código errado. Restam 4 tentativa(s)."
+            }
+        });
+
+        // ---------- Esqueci o email: POST /api/recuperar/email ----------
+        $("cep").addEventListener("input", e => {
+            let v = e.target.value.replace(/\D/g, "").slice(0, 8);
+            e.target.value = v.length > 5 ? v.slice(0, 5) + "-" + v.slice(5) : v;
+        });
+        $("telefone").addEventListener("input", e => {
+            let v = e.target.value.replace(/\D/g, "").slice(0, 11);
+            if (v.length <= 2) e.target.value = v.length ? "(" + v : "";
+            else if (v.length <= 6) e.target.value = `(${v.slice(0, 2)}) ${v.slice(2)}`;
+            else if (v.length <= 10) e.target.value = `(${v.slice(0, 2)}) ${v.slice(2, 6)}-${v.slice(6)}`;
+            else e.target.value = `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
+        });
+        $("formEmail").addEventListener("submit", async e => {
+            e.preventDefault();
+            const telefone = $("telefone").value.trim();
+            const cep = $("cep").value.trim();
+            if (telefone.replace(/\D/g, "").length < 10) { aviso("Digite o telefone completo.", "erro"); $("telefone").focus(); return; }
+            if (cep.replace(/\D/g, "").length !== 8) { aviso("Digite o CEP completo.", "erro"); $("cep").focus(); return; }
+            try {
+                const resp = await enviar("/api/recuperar/email", { telefone, cep });
+                aviso(resp.mensagem, "sucesso");   // "Seu email é: jo***@gmail.com"
+            } catch (err) {
+                aviso(err.message, "erro");
+            }
+        });
+    </script>
+</body>
+</html>

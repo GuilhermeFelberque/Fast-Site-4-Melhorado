@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<!-- ESTOQUE DE PEÇAS DA OFICINA (só o administrador acessa) -->
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Turbo Garage | Estoque</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="oculto">
+    <header class="topo">
+        <a class="marca" href="/home.html">
+            <div class="marca-logo">TG</div>
+            <div>
+                <div class="marca-nome">TURBO <span>GARAGE</span></div>
+                <div class="marca-slogan">Gestão de clientes para oficina mecânica</div>
+            </div>
+        </a>
+        <div class="topo-direita">
+            <nav>
+                <a href="/home.html">Início</a>
+                <a href="/cadastros.html">Clientes</a>
+                <a href="/veiculos.html">Veículos</a>
+                <a href="/ordens.html">Ordens de Serviço</a>
+                <a href="/agendamentos.html">Agendamentos</a>
+                <a href="/estoque.html" class="ativo">Estoque</a>
+            </nav>
+            <div class="aluno">Aluno: <strong>Guilherme Felberque/Danilo Dorella</strong></div>
+            <button id="btnSair" class="btn btn-escuro btn-pequeno">Sair</button>
+        </div>
+    </header>
+
+    <main class="conteudo">
+        <h1 class="titulo-pagina"><span>Estoque</span> de peças</h1>
+
+        <!-- Resumo do estoque -->
+        <div class="resumo" aria-label="Resumo do estoque">
+            <div class="resumo-item"><span class="resumo-numero" id="rItens">0</span><span class="resumo-rotulo">peças diferentes</span></div>
+            <div class="resumo-item"><span class="resumo-numero" id="rUnidades">0</span><span class="resumo-rotulo">unidades no total</span></div>
+            <div class="resumo-item"><span class="resumo-numero" id="rValor">R$ 0,00</span><span class="resumo-rotulo">valor em estoque</span></div>
+            <div class="resumo-item alerta-repor" id="rBaixoBox"><span class="resumo-numero" id="rBaixo">0</span><span class="resumo-rotulo">precisam repor</span></div>
+        </div>
+
+        <div class="grade empilhada">
+            <!-- ===== CREATE / UPDATE ===== -->
+            <section class="cartao" id="cartaoForm">
+                <h2 id="tituloForm">Nova peça</h2>
+                <form id="formPeca" novalidate>
+                    <div class="linha">
+                        <div class="campo">
+                            <label for="nome">Nome da peça *</label>
+                            <input id="nome" maxlength="120" placeholder="Ex.: Pastilha de freio" required>
+                        </div>
+                        <div class="campo">
+                            <label for="codigo">Código *</label>
+                            <input id="codigo" maxlength="30" placeholder="FRE-001" required>
+                        </div>
+                    </div>
+                    <div class="campo">
+                        <label for="categoria">Categoria</label>
+                        <input id="categoria" maxlength="60" list="categorias" placeholder="Ex.: Freios, Motor, Suspensão">
+                        <datalist id="categorias">
+                            <option value="Freios"></option><option value="Motor"></option>
+                            <option value="Suspensão"></option><option value="Elétrica"></option>
+                            <option value="Pneus"></option><option value="Fluidos e óleos"></option>
+                        </datalist>
+                    </div>
+                    <div class="tres">
+                        <div class="campo">
+                            <label for="quantidade">Quantidade *</label>
+                            <input id="quantidade" type="number" min="0" step="1" required>
+                        </div>
+                        <div class="campo">
+                            <label for="estoqueMinimo">Mínimo *</label>
+                            <input id="estoqueMinimo" type="number" min="0" step="1" value="0" required>
+                        </div>
+                        <div class="campo">
+                            <label for="preco">Preço (R$) *</label>
+                            <input id="preco" type="number" min="0" step="0.01" placeholder="0,00" required>
+                        </div>
+                    </div>
+                    <div class="dica">Quando a quantidade chegar no mínimo, a peça aparece como "Repor".</div>
+                    <div class="form-botoes">
+                        <button type="submit" class="btn" id="btnSalvar">Salvar</button>
+                        <button type="button" class="btn btn-claro" id="btnCancelar" hidden>Cancelar edição</button>
+                    </div>
+                </form>
+                <div id="msgForm" class="alerta" role="alert"></div>
+            </section>
+
+            <!-- ===== READ / DELETE / ENTRADA E SAÍDA ===== -->
+            <section class="cartao">
+                <h2>Peças em estoque</h2>
+                <div class="barra-lista">
+                    <input id="filtro" type="search" placeholder="Buscar por nome, código ou categoria">
+                    <label class="check"><input type="checkbox" id="soBaixo"> Só o que precisa repor</label>
+                    <button class="btn btn-pequeno" id="btnExportar" type="button">Exportar Excel</button>
+                </div>
+                <div class="total" id="total"></div>
+                <div class="tabela-rolagem">
+                    <table>
+                        <thead>
+                            <tr><th>Código</th><th>Peça</th><th>Qtd.</th><th>Preço</th><th>Entrada / saída</th><th></th></tr>
+                        </thead>
+                        <tbody id="lista"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <div class="toast" id="toast" role="status"></div>
+
+    <script src="/js/sessao.js"></script>
+    <script src="/js/comum.js"></script>
+    <script>
+        let pecas = [];
+        let editandoId = null;   // null = criando; número = editando
+
+        $("codigo").addEventListener("input", e => e.target.value = e.target.value.toUpperCase());
+
+        // ---------- READ: GET /api/pecas ----------
+        async function carregar() {
+            try {
+                pecas = await api("/api/pecas");
+                atualizarResumo();
+                desenhar();
+            } catch (err) {
+                if (err.message !== "redirecionado") toast(err.message, "erro");
+            }
+        }
+
+        function atualizarResumo() {
+            const unidades = pecas.reduce((s, p) => s + p.quantidade, 0);
+            const valor = pecas.reduce((s, p) => s + p.quantidade * Number(p.preco), 0);
+            const baixo = pecas.filter(p => p.estoqueBaixo).length;
+            $("rItens").textContent = pecas.length;
+            $("rUnidades").textContent = unidades.toLocaleString("pt-BR");
+            $("rValor").textContent = moeda(valor);
+            $("rBaixo").textContent = baixo;
+            $("rBaixoBox").classList.toggle("ativo", baixo > 0);
+        }
+
+        function filtradas() {
+            const termo = normalizar($("filtro").value);
+            const soBaixo = $("soBaixo").checked;
+            return pecas.filter(p =>
+                (!soBaixo || p.estoqueBaixo) &&
+                normalizar(`${p.codigo} ${p.nome} ${p.categoria}`).includes(termo));
+        }
+
+        function desenhar() {
+            const lista = filtradas();
+            const tbody = $("lista");
+            tbody.innerHTML = "";
+            $("total").textContent = `${lista.length} de ${pecas.length} peça(s)`;
+            if (lista.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="vazio">${pecas.length ? "Nenhuma peça encontrada." : "Nenhuma peça cadastrada ainda."}</td></tr>`;
+                return;
+            }
+            for (const p of lista) {
+                const tr = document.createElement("tr");
+                if (p.estoqueBaixo) tr.classList.add("linha-repor");
+                if (p.id === editandoId) tr.classList.add("selecionado");
+                tr.innerHTML = `<td class="placa"></td>
+                    <td><span data-nome></span><br><small data-cat></small></td>
+                    <td class="qtd"><strong data-qtd></strong><br><small data-min></small></td>
+                    <td class="dinheiro"></td>
+                    <td class="movimento">
+                        <input type="number" min="1" value="1" aria-label="Quantidade a movimentar">
+                        <button class="btn btn-pequeno btn-confirmar" data-entrada title="Entrada: chegou peça">+ Entrada</button>
+                        <button class="btn btn-pequeno btn-claro" data-saida title="Saída: usou peça">− Saída</button>
+                    </td>
+                    <td class="acoes">
+                        <button class="btn btn-pequeno" data-editar>Editar</button>
+                        <button class="btn btn-pequeno btn-perigo" data-excluir>Excluir</button>
+                    </td>`;
+                const c = tr.children;   // textContent: seguro contra XSS
+                c[0].textContent = p.codigo;
+                c[1].querySelector("[data-nome]").textContent = p.nome;
+                c[1].querySelector("[data-cat]").textContent = p.categoria || "Sem categoria";
+                c[2].querySelector("[data-qtd]").textContent = p.quantidade;
+                c[2].querySelector("[data-min]").textContent = "mín. " + p.estoqueMinimo;
+                if (p.estoqueBaixo) {
+                    const aviso = document.createElement("span");
+                    aviso.className = "status REPOR";
+                    aviso.textContent = "Repor";
+                    c[2].append(document.createElement("br"), aviso);
+                }
+                c[3].textContent = moeda(p.preco);
+                const qtdMov = c[4].querySelector("input");
+                c[4].querySelector("[data-entrada]").onclick = () => movimentar(p, "ENTRADA", qtdMov.value);
+                c[4].querySelector("[data-saida]").onclick = () => movimentar(p, "SAIDA", qtdMov.value);
+                tr.querySelector("[data-editar]").onclick = () => editar(p.id);
+                tr.querySelector("[data-excluir]").onclick = () => excluir(p);
+                tbody.appendChild(tr);
+            }
+        }
+        $("filtro").addEventListener("input", desenhar);
+        $("soBaixo").addEventListener("change", desenhar);
+
+        // ---------- ENTRADA / SAÍDA: POST /api/pecas/{id}/movimento ----------
+        async function movimentar(p, tipo, qtd) {
+            const quantidade = Number(qtd);
+            if (!Number.isInteger(quantidade) || quantidade < 1) { toast("Informe uma quantidade de 1 ou mais.", "erro"); return; }
+            try {
+                const resp = await api(`/api/pecas/${p.id}/movimento`, { method: "POST", body: { tipo, quantidade } });
+                toast(resp.mensagem);
+                await carregar();
+            } catch (err) {
+                if (err.message !== "redirecionado") toast(err.message, "erro");   // ex.: estoque insuficiente
+            }
+        }
+
+        // ---------- UPDATE (passo 1): carrega no formulário ----------
+        async function editar(id) {
+            try {
+                const p = await api("/api/pecas/" + id);
+                editandoId = p.id;
+                $("nome").value = p.nome;
+                $("codigo").value = p.codigo;
+                $("categoria").value = p.categoria || "";
+                $("quantidade").value = p.quantidade;
+                $("estoqueMinimo").value = p.estoqueMinimo;
+                $("preco").value = Number(p.preco).toFixed(2);
+                $("tituloForm").innerHTML = 'Editar peça <span class="modo"></span>';
+                $("tituloForm").querySelector(".modo").textContent = p.codigo;
+                $("btnSalvar").textContent = "Salvar alterações";
+                $("btnCancelar").hidden = false;
+                $("cartaoForm").classList.add("form-editando");
+                erroForm("");
+                desenhar();
+                $("nome").focus();
+                $("cartaoForm").scrollIntoView({ behavior: "smooth", block: "start" });
+            } catch (err) {
+                if (err.message !== "redirecionado") toast(err.message, "erro");
+            }
+        }
+
+        function limparFormulario() {
+            editandoId = null;
+            $("formPeca").reset();
+            $("tituloForm").textContent = "Nova peça";
+            $("btnSalvar").textContent = "Salvar";
+            $("btnCancelar").hidden = true;
+            $("cartaoForm").classList.remove("form-editando");
+            erroForm("");
+            desenhar();
+        }
+        $("btnCancelar").onclick = limparFormulario;
+
+        // ---------- CREATE (POST) e UPDATE (PUT) ----------
+        $("formPeca").addEventListener("submit", async e => {
+            e.preventDefault();
+            const num = id => $(id).value === "" ? null : Number($(id).value);
+            const dados = {
+                codigo: $("codigo").value.trim(),
+                nome: $("nome").value.trim(),
+                categoria: $("categoria").value.trim(),
+                quantidade: num("quantidade"),
+                estoqueMinimo: num("estoqueMinimo"),
+                preco: num("preco")
+            };
+            if (!dados.nome) { erroForm("Informe o nome da peça."); $("nome").focus(); return; }
+            if (!dados.codigo) { erroForm("Informe o código da peça."); $("codigo").focus(); return; }
+            if (dados.quantidade === null || !Number.isInteger(dados.quantidade) || dados.quantidade < 0) { erroForm("Informe uma quantidade válida (0 ou mais)."); $("quantidade").focus(); return; }
+            if (dados.estoqueMinimo === null || !Number.isInteger(dados.estoqueMinimo) || dados.estoqueMinimo < 0) { erroForm("Informe um estoque mínimo válido (0 ou mais)."); $("estoqueMinimo").focus(); return; }
+            if (dados.preco === null || isNaN(dados.preco) || dados.preco < 0) { erroForm("Informe um preço válido."); $("preco").focus(); return; }
+
+            try {
+                const resp = editandoId
+                    ? await api("/api/pecas/" + editandoId, { method: "PUT", body: dados })
+                    : await api("/api/pecas", { method: "POST", body: dados });
+                toast(resp.mensagem);
+                limparFormulario();
+                await carregar();
+            } catch (err) {
+                if (err.message !== "redirecionado") erroForm(err.message);
+            }
+        });
+
+        // ---------- DELETE com confirmação ----------
+        async function excluir(p) {
+            const ok = await confirmar("Excluir peça?", `A peça ${p.codigo} (${p.nome}) será removida do estoque.`);
+            if (!ok) return;
+            try {
+                const resp = await api("/api/pecas/" + p.id, { method: "DELETE" });
+                toast(resp.mensagem);
+                if (editandoId === p.id) limparFormulario();
+                await carregar();
+            } catch (err) {
+                if (err.message !== "redirecionado") toast(err.message, "erro");
+            }
+        }
+
+        // ---------- Exportar para o Excel ----------
+        $("btnExportar").onclick = () => exportarCSV("estoque_pecas.csv",
+            ["Código", "Peça", "Categoria", "Quantidade", "Mínimo", "Preço unitário", "Valor total", "Situação"],
+            filtradas().map(p => [p.codigo, p.nome, p.categoria, p.quantidade, p.estoqueMinimo,
+                Number(p.preco).toFixed(2).replace(".", ","),
+                (p.quantidade * Number(p.preco)).toFixed(2).replace(".", ","),
+                p.estoqueBaixo ? "Repor" : "OK"]));
+
+        ligarBotaoSair();
+        exigirAdmin().then(u => { if (u) carregar(); });
+    </script>
+</body>
+</html>

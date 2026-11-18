@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<!-- ÁREA DO CLIENTE (o diferencial): meus veículos + pré-atendimento de ordem de serviço -->
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Turbo Garage | Meus veículos</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="oculto">
+    <header class="topo">
+        <a class="marca" href="/home.html">
+            <div class="marca-logo">TG</div>
+            <div>
+                <div class="marca-nome">TURBO <span>GARAGE</span></div>
+                <div class="marca-slogan">Gestão de clientes para oficina mecânica</div>
+            </div>
+        </a>
+        <div class="topo-direita">
+            <nav>
+                <a href="/home.html">Início</a>
+                <a href="/veiculos.html">Veículos</a>
+                <a href="/meus-veiculos.html" class="ativo">Meus veículos</a>
+                <a href="/agendamentos.html">Agendamentos</a>
+            </nav>
+            <div class="aluno">Aluno: <strong>Guilherme Felberque/Danilo Dorella</strong></div>
+            <button id="btnSair" class="btn btn-escuro btn-pequeno">Sair</button>
+        </div>
+    </header>
+
+    <main class="conteudo">
+        <h1 class="titulo-pagina"><span>Meus</span> veículos</h1>
+        <p class="intro-cliente">
+            Peça um pré-atendimento antes de trazer o carro: descreva o problema e a oficina analisa e define o valor.
+            Acompanhe aqui cada serviço, do pedido até a conclusão.
+        </p>
+
+        <div class="grade">
+            <!-- ===== PRÉ-ATENDIMENTO (POST /api/cliente/pre-atendimento) ===== -->
+            <section class="cartao" id="cartaoForm">
+                <h2>Pedir pré-atendimento</h2>
+                <form id="formPre" novalidate>
+                    <div class="campo">
+                        <label for="veiculoId">Veículo *</label>
+                        <select id="veiculoId" required>
+                            <option value="">Carregando seus veículos...</option>
+                        </select>
+                    </div>
+                    <div class="campo">
+                        <label for="defeito">O que está acontecendo? *</label>
+                        <textarea id="defeito" maxlength="500" placeholder="Ex.: barulho ao frear e volante puxando para a direita" required></textarea>
+                        <div class="dica" id="contador">0 / 500</div>
+                    </div>
+                    <div class="form-botoes">
+                        <button type="submit" class="btn" id="btnEnviar">Enviar para a oficina</button>
+                    </div>
+                </form>
+                <div id="msgForm" class="alerta" role="alert"></div>
+            </section>
+
+            <!-- ===== MEUS VEÍCULOS + ACOMPANHAMENTO (GET /api/cliente/veiculos) ===== -->
+            <section class="lista-veiculos" id="lista" aria-label="Meus veículos"></section>
+        </div>
+    </main>
+
+    <div class="toast" id="toast" role="status"></div>
+
+    <script src="/js/sessao.js"></script>
+    <script src="/js/comum.js"></script>
+    <script>
+        // Etapas que o cliente acompanha (CANCELADA aparece à parte)
+        const ETAPAS = [
+            ["SOLICITADA", "Pré-atendimento"],
+            ["ABERTA", "Aberta"],
+            ["EM_ANDAMENTO", "Em andamento"],
+            ["CONCLUIDA", "Concluída"]
+        ];
+
+        $("defeito").addEventListener("input", e => {
+            $("contador").textContent = `${e.target.value.length} / 500`;
+        });
+
+        // ---------- GET /api/cliente/veiculos ----------
+        async function carregar() {
+            try {
+                const veiculos = await api("/api/cliente/veiculos");
+                preencherSelect(veiculos);
+                desenhar(veiculos);
+            } catch (err) {
+                if (err.message !== "redirecionado") toast(err.message, "erro");
+            }
+        }
+
+        function preencherSelect(veiculos) {
+            const sel = $("veiculoId");
+            const escolhido = sel.value;
+            sel.innerHTML = "";
+            if (veiculos.length === 0) {
+                sel.innerHTML = '<option value="">Cadastre um veículo primeiro</option>';
+                $("btnEnviar").disabled = true;
+                return;
+            }
+            $("btnEnviar").disabled = false;
+            sel.innerHTML = '<option value="">Selecione o veículo</option>';
+            for (const v of veiculos) {
+                const op = document.createElement("option");
+                op.value = v.id;
+                op.textContent = `${v.placa} - ${v.modelo} (${v.ano})`;   // textContent: seguro contra XSS
+                sel.appendChild(op);
+            }
+            sel.value = escolhido;
+        }
+
+        function desenhar(veiculos) {
+            const lista = $("lista");
+            lista.innerHTML = "";
+
+            if (veiculos.length === 0) {
+                const vazio = document.createElement("section");
+                vazio.className = "cartao";
+                vazio.innerHTML = `<h2>Nenhum veículo ainda</h2>
+                    <p class="sem-ordens">Cadastre o seu carro para poder pedir um pré-atendimento.</p>
+                    <p><a href="/veiculos.html" class="btn">Cadastrar meu veículo</a></p>`;
+                lista.appendChild(vazio);
+                return;
+            }
+
+            for (const v of veiculos) {
+                const cartao = document.createElement("section");
+                cartao.className = "cartao veiculo-cliente";
+                cartao.innerHTML = `<h2><span class="placa-grande"></span><span class="modelo"></span></h2><p class="sem-ordens" data-obs></p><div data-ordens></div>`;
+                cartao.querySelector(".placa-grande").textContent = v.placa;
+                cartao.querySelector(".modelo").textContent = `${v.modelo} · ${v.ano}`;
+                const obs = cartao.querySelector("[data-obs]");
+                if (v.observacao) obs.textContent = "Observação: " + v.observacao;
+                else obs.remove();
+
+                const area = cartao.querySelector("[data-ordens]");
+                if (v.ordens.length === 0) {
+                    area.innerHTML = '<p class="sem-ordens">Nenhum serviço para este veículo ainda.</p>';
+                }
+                for (const o of v.ordens) area.appendChild(desenharOrdem(o));
+                lista.appendChild(cartao);
+            }
+        }
+
+        // Uma ordem com a barra de etapas
+        function desenharOrdem(o) {
+            const div = document.createElement("div");
+            div.className = "ordem-cliente";
+            div.innerHTML = `<div class="cabeca"><span data-os></span><span data-data></span></div>
+                <div class="defeito"></div>
+                <div>Valor: <span class="valor"></span></div>`;
+            div.querySelector("[data-os]").textContent = "OS #" + o.id;
+            div.querySelector("[data-data]").textContent = "Pedido em " + o.dataAbertura;
+            div.querySelector(".defeito").textContent = o.defeito;
+            div.querySelector(".valor").textContent =
+                o.status === "SOLICITADA" ? "a definir pela oficina" : moeda(o.valor);
+            // Carro pronto: o cliente pode ver/imprimir o relatório
+            if (o.status === "CONCLUIDA") {
+                const rel = document.createElement("a");
+                rel.className = "btn btn-pequeno btn-relatorio";
+                rel.href = "/relatorio.html?id=" + o.id;
+                rel.textContent = "Ver relatório";
+                div.querySelector(".cabeca").appendChild(rel);
+            }
+
+            if (o.status === "CANCELADA") {
+                const c = document.createElement("div");
+                c.className = "cancelada";
+                c.innerHTML = '<span class="status CANCELADA">Cancelada</span>';
+                div.appendChild(c);
+                return div;
+            }
+
+            const atual = ETAPAS.findIndex(e => e[0] === o.status);
+            const barra = document.createElement("div");
+            barra.className = "etapas";
+            ETAPAS.forEach(([, nome], i) => {
+                const etapa = document.createElement("div");
+                etapa.className = "etapa" + (i < atual ? " feita" : i === atual ? " atual" : "");
+                etapa.textContent = nome;
+                barra.appendChild(etapa);
+            });
+            div.appendChild(barra);
+            return div;
+        }
+
+        // ---------- POST /api/cliente/pre-atendimento ----------
+        $("formPre").addEventListener("submit", async e => {
+            e.preventDefault();
+            const dados = {
+                veiculoId: $("veiculoId").value ? Number($("veiculoId").value) : null,
+                defeito: $("defeito").value.trim()
+            };
+            if (!dados.veiculoId) { erroForm("Escolha o veículo."); $("veiculoId").focus(); return; }
+            if (!dados.defeito) { erroForm("Descreva o problema do veículo."); $("defeito").focus(); return; }
+
+            try {
+                const resp = await api("/api/cliente/pre-atendimento", { method: "POST", body: dados });
+                toast(resp.mensagem);   // "Pré-atendimento enviado! ..."
+                erroForm("");
+                $("defeito").value = "";
+                $("contador").textContent = "0 / 500";
+                await carregar();
+            } catch (err) {
+                if (err.message !== "redirecionado") erroForm(err.message);
+            }
+        });
+
+        ligarBotaoSair();
+        // Tela só do cliente: o admin acompanha tudo pela tela de Ordens
+        exigirLogin().then(u => {
+            if (!u) return;
+            if (u.admin) { window.location.href = "/ordens.html"; return; }
+            carregar();
+        });
+    </script>
+</body>
+</html>

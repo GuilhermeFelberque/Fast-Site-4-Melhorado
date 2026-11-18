@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<!-- RELATÓRIO DA ORDEM DE SERVIÇO (só de carro já arrumado: status CONCLUÍDA)
+     Abre com /relatorio.html?id=NUMERO_DA_OS
+     Admin: qualquer ordem concluída · Cliente: só as dos carros dele -->
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Turbo Garage | Relatório da OS</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="oculto pagina-relatorio">
+    <!-- Barra de ações (some na impressão) -->
+    <div class="barra-relatorio nao-imprimir">
+        <a href="javascript:history.back()" class="btn btn-claro btn-pequeno">← Voltar</a>
+        <button class="btn btn-pequeno" id="btnImprimir">Imprimir / salvar PDF</button>
+    </div>
+
+    <div id="erro" class="alerta nao-imprimir" role="alert"></div>
+
+    <article class="relatorio" id="relatorio" hidden>
+        <header class="rel-topo">
+            <div class="marca">
+                <div class="marca-logo">TG</div>
+                <div>
+                    <div class="marca-nome rel-marca">TURBO <span>GARAGE</span></div>
+                    <div class="rel-sub">Gestão de clientes para oficina mecânica</div>
+                </div>
+            </div>
+            <div class="rel-numero">
+                <div>RELATÓRIO DE SERVIÇO</div>
+                <strong id="rNumero"></strong>
+            </div>
+        </header>
+
+        <div class="rel-carimbo">✔ SERVIÇO CONCLUÍDO</div>
+
+        <section class="rel-bloco">
+            <h2>Cliente</h2>
+            <dl class="rel-dados">
+                <dt>Nome</dt><dd id="rCliente"></dd>
+                <dt>Telefone</dt><dd id="rTelefone"></dd>
+                <dt>Email</dt><dd id="rEmail"></dd>
+                <dt>Endereço</dt><dd id="rEndereco"></dd>
+            </dl>
+        </section>
+
+        <section class="rel-bloco">
+            <h2>Veículo</h2>
+            <dl class="rel-dados">
+                <dt>Placa</dt><dd id="rPlaca" class="rel-placa"></dd>
+                <dt>Modelo</dt><dd id="rModelo"></dd>
+                <dt>Ano</dt><dd id="rAno"></dd>
+                <dt>Observação do cliente</dt><dd id="rObs"></dd>
+            </dl>
+        </section>
+
+        <section class="rel-bloco">
+            <h2>Serviço realizado</h2>
+            <dl class="rel-dados">
+                <dt>Defeito / serviço</dt><dd id="rDefeito"></dd>
+                <dt>Aberta em</dt><dd id="rAbertura"></dd>
+                <dt>Concluída em</dt><dd id="rConclusao"></dd>
+            </dl>
+            <div class="rel-total">
+                <span>VALOR TOTAL</span>
+                <strong id="rValor"></strong>
+            </div>
+        </section>
+
+        <section class="rel-assinaturas">
+            <div><span></span>Mecânico responsável</div>
+            <div><span></span>Cliente</div>
+        </section>
+
+        <footer class="rel-rodape">
+            <span id="rEmitido"></span>
+            <span>Turbo Garage · Guilherme Felberque/Danilo Dorella</span>
+        </footer>
+    </article>
+
+    <script src="/js/sessao.js"></script>
+    <script src="/js/comum.js"></script>
+    <script>
+        const id = new URLSearchParams(location.search).get("id");
+
+        function mostrarErro(texto) {
+            const e = $("erro");
+            e.textContent = texto;
+            e.className = "alerta erro nao-imprimir";
+        }
+
+        $("btnImprimir").onclick = () => window.print();
+
+        async function carregar(admin) {
+            if (!id || !/^\d+$/.test(id)) { mostrarErro("Ordem de serviço não informada."); return; }
+            // Admin usa a rota dele; o cliente usa a rota que confere se o carro é dele
+            const url = admin ? `/api/ordens/${id}/relatorio` : `/api/cliente/ordens/${id}/relatorio`;
+            try {
+                const r = await api(url);
+                const texto = (campo, valor) => $(campo).textContent = valor || "—";   // textContent: seguro contra XSS
+                texto("rNumero", "OS Nº " + String(r.numero).padStart(5, "0"));
+                texto("rCliente", r.clienteNome);
+                texto("rTelefone", r.clienteTelefone);
+                texto("rEmail", r.clienteEmail);
+                texto("rEndereco", r.clienteEndereco);
+                texto("rPlaca", r.veiculoPlaca);
+                texto("rModelo", r.veiculoModelo);
+                texto("rAno", r.veiculoAno);
+                texto("rObs", r.observacaoVeiculo);
+                texto("rDefeito", r.defeito);
+                texto("rAbertura", r.dataAbertura);
+                texto("rConclusao", r.dataConclusao);
+                texto("rValor", moeda(r.valor));
+                texto("rEmitido", "Emitido em " + r.emitidoEm);
+                document.title = `Relatório OS ${r.numero} - ${r.veiculoPlaca}`;
+                $("relatorio").hidden = false;
+            } catch (err) {
+                if (err.message !== "redirecionado") mostrarErro(err.message);   // ex.: "só para serviço concluído"
+            }
+        }
+
+        exigirLogin().then(u => { if (u) carregar(u.admin); });
+    </script>
+</body>
+</html>

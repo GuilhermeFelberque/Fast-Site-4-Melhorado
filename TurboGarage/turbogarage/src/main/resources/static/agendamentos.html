@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<!-- AGENDAMENTOS
+     CLIENTE: pede um dia/horário para levar o carro e acompanha a resposta
+     MECÂNICO (admin): vê todos os pedidos e confirma ou recusa -->
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Turbo Garage | Agendamentos</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="oculto">
+    <header class="topo">
+        <a class="marca" href="/home.html">
+            <div class="marca-logo">TG</div>
+            <div>
+                <div class="marca-nome">TURBO <span>GARAGE</span></div>
+                <div class="marca-slogan">Gestão de clientes para oficina mecânica</div>
+            </div>
+        </a>
+        <div class="topo-direita">
+            <nav>
+                <a href="/home.html">Início</a>
+                <a href="/cadastros.html" data-so-admin hidden>Clientes</a>
+                <a href="/veiculos.html">Veículos</a>
+                <a href="/ordens.html" data-so-admin hidden>Ordens de Serviço</a>
+                <a href="/meus-veiculos.html" data-so-cliente hidden>Meus veículos</a>
+                <a href="/agendamentos.html" class="ativo">Agendamentos</a>
+                <a href="/estoque.html" data-so-admin hidden>Estoque</a>
+            </nav>
+            <div class="aluno">Aluno: <strong>Guilherme Felberque/Danilo Dorella</strong></div>
+            <button id="btnSair" class="btn btn-escuro btn-pequeno">Sair</button>
+        </div>
+    </header>
+
+    <main class="conteudo">
+        <h1 class="titulo-pagina"><span>Agendamentos</span></h1>
+
+        <!-- ================= CLIENTE ================= -->
+        <div data-so-cliente hidden>
+            <p class="intro-cliente">
+                Escolha o dia e o horário para trazer o seu carro. O mecânico vai confirmar ou sugerir outro horário.
+            </p>
+            <div class="grade">
+                <section class="cartao">
+                    <h2>Agendar visita</h2>
+                    <form id="formAgendar" novalidate>
+                        <div class="campo">
+                            <label for="veiculoId">Veículo *</label>
+                            <select id="veiculoId" required>
+                                <option value="">Carregando seus veículos...</option>
+                            </select>
+                        </div>
+                        <div class="linha">
+                            <div class="campo">
+                                <label for="data">Dia *</label>
+                                <input id="data" type="date" required>
+                            </div>
+                            <div class="campo">
+                                <label for="hora">Horário *</label>
+                                <select id="hora" required>
+                                    <option value="">--:--</option>
+                                    <option>08:00</option><option>09:00</option><option>10:00</option>
+                                    <option>11:00</option><option>12:00</option><option>13:00</option>
+                                    <option>14:00</option><option>15:00</option><option>16:00</option>
+                                    <option>17:00</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="dica">Atendimento de segunda a sábado, das 8h às 17h.</div>
+                        <div class="campo">
+                            <label for="motivo">Motivo da visita</label>
+                            <textarea id="motivo" maxlength="500" placeholder="Ex.: revisão, barulho no freio, troca de óleo..."></textarea>
+                        </div>
+                        <div class="form-botoes">
+                            <button type="submit" class="btn" id="btnAgendar">Pedir agendamento</button>
+                        </div>
+                    </form>
+                    <div id="msgForm" class="alerta" role="alert"></div>
+                </section>
+
+                <section class="cartao">
+                    <h2>Meus agendamentos</h2>
+                    <div id="meusAgendamentos"></div>
+                </section>
+            </div>
+        </div>
+
+        <!-- ================= MECÂNICO (ADMIN) ================= -->
+        <section class="cartao" data-so-admin hidden>
+            <h2>Pedidos dos clientes</h2>
+            <div class="barra-lista">
+                <select id="filtroStatus" aria-label="Filtrar por situação">
+                    <option value="PENDENTE">Aguardando confirmação</option>
+                    <option value="CONFIRMADO">Confirmados</option>
+                    <option value="RECUSADO">Recusados</option>
+                    <option value="">Todos</option>
+                </select>
+            </div>
+            <div class="total" id="total"></div>
+            <div class="tabela-rolagem">
+                <table>
+                    <thead>
+                        <tr><th>Dia e hora</th><th>Veículo</th><th>Cliente</th><th>Motivo</th><th>Situação</th><th>Validação</th></tr>
+                    </thead>
+                    <tbody id="lista"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <div class="toast" id="toast" role="status"></div>
+
+    <script src="/js/sessao.js"></script>
+    <script src="/js/comum.js"></script>
+    <script>
+        const NOMES = { PENDENTE: "Aguardando confirmação", CONFIRMADO: "Confirmado", RECUSADO: "Recusado" };
+        let todos = [];   // lista do mecânico
+
+        function pill(status) {
+            const s = document.createElement("span");
+            s.className = "status " + status;
+            s.textContent = NOMES[status] || status;
+            return s;
+        }
+
+        // ======================= CLIENTE =======================
+
+        // Não deixa escolher dia que já passou
+        $("data").min = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+
+        async function carregarVeiculosCliente() {
+            const veiculos = await api("/api/cliente/veiculos");
+            const sel = $("veiculoId");
+            sel.innerHTML = "";
+            if (veiculos.length === 0) {
+                sel.innerHTML = '<option value="">Cadastre um veículo primeiro</option>';
+                $("btnAgendar").disabled = true;
+                return;
+            }
+            sel.innerHTML = '<option value="">Selecione o veículo</option>';
+            for (const v of veiculos) {
+                const op = document.createElement("option");
+                op.value = v.id;
+                op.textContent = `${v.placa} - ${v.modelo} (${v.ano})`;
+                sel.appendChild(op);
+            }
+        }
+
+        // GET /api/cliente/agendamentos
+        async function carregarMeus() {
+            try {
+                const lista = await api("/api/cliente/agendamentos");
+                const area = $("meusAgendamentos");
+                area.innerHTML = "";
+                if (lista.length === 0) {
+                    area.innerHTML = '<p class="sem-ordens">Você ainda não fez nenhum agendamento.</p>';
+                    return;
+                }
+                for (const a of lista) {
+                    const item = document.createElement("div");
+                    item.className = "agendamento-item " + a.status;
+                    item.innerHTML = `<div class="ag-topo"><strong class="ag-data"></strong></div>
+                        <div class="ag-carro"></div><div class="ag-motivo"></div><div class="ag-resposta"></div>`;
+                    item.querySelector(".ag-data").textContent = a.dataHora;
+                    item.querySelector(".ag-topo").appendChild(pill(a.status));
+                    item.querySelector(".ag-carro").textContent = `${a.veiculoPlaca} · ${a.veiculoModelo}`;
+                    const motivo = item.querySelector(".ag-motivo");
+                    if (a.motivo) motivo.textContent = "Motivo: " + a.motivo; else motivo.remove();
+                    const resp = item.querySelector(".ag-resposta");
+                    if (a.resposta) resp.textContent = "Mensagem do mecânico: " + a.resposta; else resp.remove();
+                    area.appendChild(item);
+                }
+            } catch (err) {
+                if (err.message !== "redirecionado") toast(err.message, "erro");
+            }
+        }
+
+        // POST /api/cliente/agendamentos
+        $("formAgendar").addEventListener("submit", async e => {
+            e.preventDefault();
+            const dados = {
+                veiculoId: $("veiculoId").value ? Number($("veiculoId").value) : null,
+                data: $("data").value,
+                hora: $("hora").value,
+                motivo: $("motivo").value.trim()
+            };
+            if (!dados.veiculoId) { erroForm("Escolha o veículo."); $("veiculoId").focus(); return; }
+            if (!dados.data) { erroForm("Escolha o dia."); $("data").focus(); return; }
+            if (!dados.hora) { erroForm("Escolha o horário."); $("hora").focus(); return; }
+            if (new Date(dados.data + "T12:00").getDay() === 0) { erroForm("A oficina não abre aos domingos."); $("data").focus(); return; }
+            if (new Date(`${dados.data}T${dados.hora}`) <= new Date()) { erroForm("Escolha um dia e horário no futuro."); return; }
+
+            try {
+                const resp = await api("/api/cliente/agendamentos", { method: "POST", body: dados });
+                toast(resp.mensagem);   // "Agendamento enviado! Aguarde a confirmação do mecânico."
+                erroForm("");
+                $("formAgendar").reset();
+                await carregarMeus();
+            } catch (err) {
+                if (err.message !== "redirecionado") erroForm(err.message);
+            }
+        });
+
+        // ======================= MECÂNICO (ADMIN) =======================
+
+        // GET /api/agendamentos
+        async function carregarTodos() {
+            try {
+                todos = await api("/api/agendamentos");
+                desenharTodos();
+            } catch (err) {
+                if (err.message !== "redirecionado") toast(err.message, "erro");
+            }
+        }
+
+        function desenharTodos() {
+            const filtro = $("filtroStatus").value;
+            const lista = todos.filter(a => !filtro || a.status === filtro);
+            const pendentes = todos.filter(a => a.status === "PENDENTE").length;
+            $("total").textContent = `${lista.length} agendamento(s) na lista · ${pendentes} aguardando confirmação`;
+
+            const tbody = $("lista");
+            tbody.innerHTML = "";
+            if (lista.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="vazio">Nenhum agendamento aqui.</td></tr>';
+                return;
+            }
+            for (const a of lista) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `<td class="dinheiro"></td>
+                    <td><span class="placa"></span><br><small></small></td>
+                    <td><span data-nome></span><br><small data-tel></small></td>
+                    <td class="texto-longo"></td><td></td><td class="validacao"></td>`;
+                const c = tr.children;   // textContent: seguro contra XSS
+                c[0].textContent = a.dataHora;
+                c[1].querySelector(".placa").textContent = a.veiculoPlaca;
+                c[1].querySelector("small").textContent = a.veiculoModelo;
+                c[2].querySelector("[data-nome]").textContent = a.clienteNome || "—";
+                c[2].querySelector("[data-tel]").textContent = a.clienteTelefone || "";
+                c[3].textContent = a.motivo || "—";
+                c[4].appendChild(pill(a.status));
+
+                if (a.status === "PENDENTE") {
+                    c[5].innerHTML = `<input type="text" maxlength="300" placeholder="Mensagem ao cliente (opcional)" aria-label="Mensagem ao cliente">
+                        <div class="form-botoes">
+                            <button class="btn btn-pequeno btn-confirmar" data-ok>Confirmar</button>
+                            <button class="btn btn-pequeno btn-perigo" data-nao>Recusar</button>
+                        </div>`;
+                    const msg = c[5].querySelector("input");
+                    c[5].querySelector("[data-ok]").onclick = () => validar(a, "CONFIRMADO", msg.value);
+                    c[5].querySelector("[data-nao]").onclick = () => validar(a, "RECUSADO", msg.value);
+                } else {
+                    c[5].textContent = a.resposta ? "Mensagem: " + a.resposta : "—";
+                }
+                tbody.appendChild(tr);
+            }
+        }
+        $("filtroStatus").addEventListener("change", desenharTodos);
+
+        // PUT /api/agendamentos/{id}/validacao
+        async function validar(a, status, resposta) {
+            if (status === "RECUSADO") {
+                const ok = await confirmar("Recusar agendamento?",
+                    `O pedido de ${a.clienteNome || "cliente"} para ${a.dataHora} será recusado.`, "Sim, recusar");
+                if (!ok) return;
+            }
+            try {
+                const resp = await api(`/api/agendamentos/${a.id}/validacao`, {
+                    method: "PUT", body: { status, resposta: resposta.trim() }
+                });
+                toast(resp.mensagem);   // "Agendamento confirmado" / "Agendamento recusado"
+                await carregarTodos();
+            } catch (err) {
+                if (err.message !== "redirecionado") toast(err.message, "erro");
+            }
+        }
+
+        ligarBotaoSair();
+        exigirLogin().then(u => {
+            if (!u) return;
+            if (u.admin) {
+                carregarTodos();
+            } else {
+                carregarVeiculosCliente();
+                carregarMeus();
+            }
+        });
+    </script>
+</body>
+</html>
